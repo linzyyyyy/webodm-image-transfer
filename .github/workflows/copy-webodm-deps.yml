@@ -1,0 +1,50 @@
+
+name: Copy WebODM Dependencies to GHCR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  copy:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - source: webodm/webodm_webapp:latest
+            target: webodm-webapp:latest
+
+          - source: webodm/webodm_db:18
+            target: webodm-db:18
+
+          - source: valkey/valkey:9.1-alpine
+            target: webodm-valkey:9.1-alpine
+
+    steps:
+      - name: Install crane
+        run: |
+          curl -fL --retry 3 \
+            -o /tmp/crane.tar.gz \
+            https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz
+          tar -xzf /tmp/crane.tar.gz -C /tmp crane
+          sudo install /tmp/crane /usr/local/bin/crane
+
+      - name: Copy image to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE: ${{ matrix.source }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | crane auth login ghcr.io \
+            -u "$GITHUB_ACTOR" --password-stdin
+
+          OWNER=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+
+          crane copy --platform linux/amd64 \
+            "$SOURCE" \
+            "ghcr.io/$OWNER/$TARGET"
